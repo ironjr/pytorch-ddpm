@@ -4,6 +4,8 @@ import os
 import warnings
 from absl import app, flags
 
+import numpy as np
+
 import torch
 from tensorboardX import SummaryWriter
 from torchvision.datasets import CIFAR10
@@ -49,7 +51,7 @@ flags.DEFINE_integer('sample_step', 1000, help='frequency of sampling')
 flags.DEFINE_integer('save_step', 5000, help='frequency of saving checkpoints, 0 to disable during training')
 flags.DEFINE_integer('eval_step', 0, help='frequency of evaluating model, 0 to disable during training')
 flags.DEFINE_integer('num_images', 50000, help='the number of generated images for evaluation')
-flags.DEFINE_bool('fid_use_torch', False, help='calculate IS and FID on gpu')
+flags.DEFINE_bool('fid_use_torch', True, help='calculate IS and FID on gpu')
 flags.DEFINE_string('fid_cache', './stats/cifar10.train.npz', help='FID cache')
 
 device = torch.device('cuda:0')
@@ -74,17 +76,27 @@ def warmup_lr(step):
     return min(step, FLAGS.warmup) / FLAGS.warmup
 
 
-def evaluate(sampler, model):
-    model.eval()
-    with torch.no_grad():
-        images = []
-        desc = "generating images"
-        for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc):
-            batch_size = min(FLAGS.batch_size, FLAGS.num_images - i)
-            x_T = torch.randn((batch_size, 3, FLAGS.img_size, FLAGS.img_size))
-            batch_images = sampler(x_T.to(device)).cpu()
-            images.append((batch_images + 1) / 2)
+def evaluate(sampler, model, ema=False):
+    sample_path = os.path.join(
+        FLAGS.logdir,
+        f'sample{FLAGS.num_images}.pt' if not ema else f'sample{FLAGS.num_images}_ema.pt',
+    )
+    try:
+        images = torch.load(sample_path)
+        images = images.astype(float) / 255.0
+    except:
+        model.eval()
+        with torch.no_grad():
+            images = []
+            desc = "generating images"
+            for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc):
+                batch_size = min(FLAGS.batch_size, FLAGS.num_images - i)
+                x_T = torch.randn((batch_size, 3, FLAGS.img_size, FLAGS.img_size))
+                batch_images = sampler(x_T.to(device)).cpu()
+                images.append((batch_images + 1) / 2)
         images = torch.cat(images, dim=0).numpy()
+        images_ = (images * 255).round().astype(np.uint8)
+        torch.save(images_, sample_path)
     model.train()
     (IS, IS_std), FID = get_inception_and_fid_score(
         images, FLAGS.fid_cache, num_images=FLAGS.num_images,
@@ -187,8 +199,8 @@ def train():
 
             # evaluate
             if FLAGS.eval_step > 0 and step % FLAGS.eval_step == 0:
-                net_IS, net_FID, _ = evaluate(net_sampler, net_model)
-                ema_IS, ema_FID, _ = evaluate(ema_sampler, ema_model)
+                net_IS, net_FID, _ = evaluate(net_sampler, net_model, False)
+                ema_IS, ema_FID, _ = evaluate(ema_sampler, ema_model, True)
                 metrics = {
                     'IS': net_IS[0],
                     'IS_std': net_IS[1],
@@ -223,7 +235,7 @@ def eval():
     # load model and evaluate
     ckpt = torch.load(os.path.join(FLAGS.logdir, 'ckpt.pt'))
     model.load_state_dict(ckpt['net_model'])
-    (IS, IS_std), FID, samples = evaluate(sampler, model)
+    (IS, IS_std), FID, samples = evaluate(sampler, model, False)
     print("Model     : IS:%6.3f(%.3f), FID:%7.3f" % (IS, IS_std, FID))
     save_image(
         torch.tensor(samples[:256]),
@@ -231,7 +243,7 @@ def eval():
         nrow=16)
 
     model.load_state_dict(ckpt['ema_model'])
-    (IS, IS_std), FID, samples = evaluate(sampler, model)
+    (IS, IS_std), FID, samples = evaluate(sampler, model, True)
     print("Model(EMA): IS:%6.3f(%.3f), FID:%7.3f" % (IS, IS_std, FID))
     save_image(
         torch.tensor(samples[:256]),

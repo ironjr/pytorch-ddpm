@@ -1,6 +1,6 @@
 .vscode
 
-stats
+stats/*.npz
 data
 logs
 

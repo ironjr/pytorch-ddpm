@@ -1,5 +1,6 @@
 .vscode
 
+.*.sw*
 stats/*.npz
 data
 logs

@@ -89,7 +89,7 @@ def evaluate(sampler, model, ema=False):
         with torch.no_grad():
             images = []
             desc = "generating images"
-            for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc):
+            for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc, dynamic_ncols=True):
                 batch_size = min(FLAGS.batch_size, FLAGS.num_images - i)
                 x_T = torch.randn((batch_size, 3, FLAGS.img_size, FLAGS.img_size))
                 batch_images = sampler(x_T.to(device)).cpu()

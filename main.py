@@ -51,7 +51,7 @@ flags.DEFINE_integer('sample_step', 1000, help='frequency of sampling')
 flags.DEFINE_integer('save_step', 5000, help='frequency of saving checkpoints, 0 to disable during training')
 flags.DEFINE_integer('eval_step', 0, help='frequency of evaluating model, 0 to disable during training')
 flags.DEFINE_integer('num_images', 50000, help='the number of generated images for evaluation')
-flags.DEFINE_bool('fid_use_torch', True, help='calculate IS and FID on gpu')
+flags.DEFINE_bool('fid_use_torch', False, help='calculate IS and FID on gpu')
 flags.DEFINE_string('fid_cache', './stats/cifar10.train.npz', help='FID cache')
 
 device = torch.device('cuda:0')
@@ -150,10 +150,8 @@ def train():
     with open(os.path.join(FLAGS.logdir, "flagfile.txt"), 'w') as f:
         f.write(FLAGS.flags_into_string())
     # show model size
-    model_size = 0
-    for param in net_model.parameters():
-        model_size += param.data.nelement()
-    print('Model params: %.2f M' % (model_size / 1024 / 1024))
+    n_params = sum([p.numel() for p in net_model.parameters() if p.requires_grad])
+    print(f'Model params: {n_params / 1000000:.2f} M')
 
     # start training
     with trange(FLAGS.total_steps, dynamic_ncols=True) as pbar:
@@ -234,13 +232,13 @@ def eval():
 
     # load model and evaluate
     ckpt = torch.load(os.path.join(FLAGS.logdir, 'ckpt.pt'))
-    model.load_state_dict(ckpt['net_model'])
-    (IS, IS_std), FID, samples = evaluate(sampler, model, False)
-    print("Model     : IS:%6.3f(%.3f), FID:%7.3f" % (IS, IS_std, FID))
-    save_image(
-        torch.tensor(samples[:256]),
-        os.path.join(FLAGS.logdir, 'samples.png'),
-        nrow=16)
+    #  model.load_state_dict(ckpt['net_model'])
+    #  (IS, IS_std), FID, samples = evaluate(sampler, model, False)
+    #  print("Model     : IS:%6.3f(%.3f), FID:%7.3f" % (IS, IS_std, FID))
+    #  save_image(
+    #      torch.tensor(samples[:256]),
+    #      os.path.join(FLAGS.logdir, 'samples.png'),
+    #      nrow=16)
 
     model.load_state_dict(ckpt['ema_model'])
     (IS, IS_std), FID, samples = evaluate(sampler, model, True)

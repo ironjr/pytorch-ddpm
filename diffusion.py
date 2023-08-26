@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from tqdm import tqdm
+
+from lrgb import LRGBLoss
+
 
 def extract(v, t, x_shape):
     """
@@ -17,10 +21,17 @@ class GaussianDiffusionTrainer(nn.Module):
         super().__init__()
 
         self.model = model
+        self.lrgb = LRGBLoss(
+            checkpoint=('../lrgb_pretrained/FINAL/idf8_ndb-lbl2-lr5e-4-coslr1k-c20'
+                '/model/model_latest.pt'),
+            #  checkpoint=('../LRGB/experiment/div2k-ndb-lbl2-lr5e-4-coslr1k'
+            #      '/model/model_latest.pt'),
+            loss_type='l2',
+        )
         self.T = T
 
         self.register_buffer(
-            'betas', torch.linspace(beta_1, beta_T, T).double())
+            'betas', torch.linspace(beta_1, beta_T, T, dtype=torch.float64))
         alphas = 1. - self.betas
         alphas_bar = torch.cumprod(alphas, dim=0)
 
@@ -39,7 +50,10 @@ class GaussianDiffusionTrainer(nn.Module):
         x_t = (
             extract(self.sqrt_alphas_bar, t, x_0.shape) * x_0 +
             extract(self.sqrt_one_minus_alphas_bar, t, x_0.shape) * noise)
-        loss = F.mse_loss(self.model(x_t, t), noise, reduction='none')
+        #  loss = F.mse_loss(self.model(x_t, t), noise, reduction='none')
+
+        loss = self.lrgb(self.model(x_t, t), noise)
+
         return loss
 
 
@@ -57,7 +71,7 @@ class GaussianDiffusionSampler(nn.Module):
         self.var_type = var_type
 
         self.register_buffer(
-            'betas', torch.linspace(beta_1, beta_T, T).double())
+            'betas', torch.linspace(beta_1, beta_T, T, dtype=torch.float64))
         alphas = 1. - self.betas
         alphas_bar = torch.cumprod(alphas, dim=0)
         alphas_bar_prev = F.pad(alphas_bar, [1, 0], value=1)[:T]
@@ -150,7 +164,8 @@ class GaussianDiffusionSampler(nn.Module):
         Algorithm 2.
         """
         x_t = x_T
-        for time_step in reversed(range(self.T)):
+        #  for time_step in reversed(range(self.T)):
+        for time_step in tqdm(reversed(range(self.T)), total=self.T):
             t = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step
             mean, log_var = self.p_mean_variance(x_t=x_t, t=t)
             # no noise when t == 0

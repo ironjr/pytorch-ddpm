@@ -153,9 +153,14 @@ class GaussianDiffusionSampler(nn.Module):
         """
         x_t = x_T
         iterator = reversed(range(self.T))
-        if not self.training:
+        #  if not self.training:
+        if True:
             iterator = tqdm(iterator, total=self.T, dynamic_ncols=True)
         for time_step in iterator:
+
+            # JAERIN: Time manipulation trick.
+            #  time_step = max(0, time_step - 50)
+
             t = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step
             mean, log_var = self.p_mean_variance(x_t=x_t, t=t)
             # no noise when t == 0
@@ -163,6 +168,10 @@ class GaussianDiffusionSampler(nn.Module):
                 noise = torch.randn_like(x_t)
             else:
                 noise = 0
+
+            # JAERIN: Noise manipulation trick.
+            #  noise *= 1.002
+
             x_t = mean + torch.exp(0.5 * log_var) * noise
         x_0 = x_t
         return torch.clip(x_0, -1, 1)

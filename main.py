@@ -15,6 +15,7 @@ from tqdm import trange
 
 from diffusion import GaussianDiffusionTrainer, GaussianDiffusionSampler
 from model import UNet
+#  from model_simple import UNet
 from score.both import get_inception_and_fid_score
 
 
